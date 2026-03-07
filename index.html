@@ -30346,20 +30346,26 @@ function handleUrlDeepLink(params) {
     settings.lastLabelType = '5371';
     saveSettings();
 
-    // Start WF1 wizard
+    // Start WF1 to reset state and show the wizard container
     wf1Start();
 
+    // Skip all wizard steps — jump directly to print preview (Step 7)
     setTimeout(function() {
-      // Select business card type
-      wf1SelectType('5371');
-
-      // Build the wf1FeSnapshot with product image, QR, and text
+      // Build card content lines
       var cardLines = [
         { text: payload.productName || '', align: 'center', fontSize: 14, fontFamily: 'elegant', bold: true, italic: false, underline: false, strikethrough: false, color: '', fillColor: '', borders: '' },
         { text: 'Shir Glassworks', align: 'center', fontSize: 10, fontFamily: 'default', bold: false, italic: false, underline: false, strikethrough: false, color: '#666666', fillColor: '', borders: '' },
         { text: '', align: 'left', fontSize: 11, fontFamily: 'default', bold: false, italic: false, underline: false, strikethrough: false, color: '', fillColor: '', borders: '' },
         { text: '', align: 'left', fontSize: 11, fontFamily: 'default', bold: false, italic: false, underline: false, strikethrough: false, color: '', fillColor: '', borders: '' }
       ];
+
+      // Set all WF1 state for direct jump to preview
+      wf1LabelType = '5371';
+      wf1JobType = 'individual';
+      wf1Quantity = 1;
+      wf1SelectedSheet = { isNew: true };
+      wf1Orientation = 'next';
+      wf1ContentLines = cardLines;
 
       wf1FeSnapshot = {
         lines: cardLines,
@@ -30378,10 +30384,12 @@ function handleUrlDeepLink(params) {
         }
       };
 
-      // Populate the WF1 editor inputs
-      wf1PopulateEditorFromLines(cardLines);
+      // Jump to Step 7 (Preview & Print)
+      wf1Step = 7;
+      wf1RenderPreview();
+      wf1ShowStep('wf1Step7');
 
-      showToast('Product card loaded — "' + (payload.productName || 'Unknown') + '"', 'success');
+      showToast('Product card ready — "' + (payload.productName || 'Unknown') + '"', 'success');
     }, 300);
 
     return;
