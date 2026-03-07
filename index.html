@@ -12976,9 +12976,7 @@ function renderUnifiedLabelPreview(config, options = {}) {
 function generateQRDataURL(data, size) {
   if (!data || typeof QRCode === 'undefined') return null;
   try {
-    const canvas = document.createElement('canvas');
-    QRCode.toCanvas(canvas, data, { width: size || 64, margin: 1 }, function() {});
-    return canvas.toDataURL();
+    return QRCode.toDataURL(data, { size: size || 64, margin: 1 });
   } catch (e) {
     return null;
   }
