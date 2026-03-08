@@ -21167,12 +21167,42 @@ function buildSheetPrintHtml(sh, manifest) {
           html += '<div class="print-text-zone">' + linesHtml + '</div>';
           html += '</div>';
         }
+      } else if (hasQR && hasGfx) {
+        // Combined graphics + QR layout (e.g., product card: image + text + QR)
+        const qrDataURL = getQRDataURL(item, spec);
+        const qrPosition = bc.position || 'right';
+        const qrSize = (spec.labelH * 0.85).toFixed(3);
+        const usableW = spec.labelW - 0.24;
+        let innerHtml = '';
+
+        // Left side
+        if (qrPosition === 'left') {
+          innerHtml += '<div class="print-qr" style="width:' + qrSize + 'in;height:' + qrSize + 'in;"><img src="' + qrDataURL + '"></div>';
+        }
+        if (gfx.left && gfx.left.data) {
+          const leftW = (usableW * (gfx.left.widthPct || 20) / 100).toFixed(3);
+          innerHtml += '<div class="print-graphic" style="width:' + leftW + 'in;"><img src="' + gfx.left.data + '"></div>';
+        }
+
+        // Center: text
+        innerHtml += '<div class="print-text-zone" style="justify-content:' + getFlexAlign(item.alignV) + ';padding:0 0.06in;">' + linesHtml + '</div>';
+
+        // Right side
+        if (gfx.right && gfx.right.data) {
+          const rightW = (usableW * (gfx.right.widthPct || 20) / 100).toFixed(3);
+          innerHtml += '<div class="print-graphic" style="width:' + rightW + 'in;"><img src="' + gfx.right.data + '"></div>';
+        }
+        if (qrPosition !== 'left') {
+          innerHtml += '<div class="print-qr" style="width:' + qrSize + 'in;height:' + qrSize + 'in;"><img src="' + qrDataURL + '"></div>';
+        }
+
+        html += '<div class="print-label print-label-gfx" style="top:' + top + 'in;left:' + left + 'in;width:' + spec.labelW + 'in;height:' + labelH + 'in;padding:0.08in 0.12in;flex-direction:row;align-items:stretch;">' + innerHtml + '</div>';
       } else if (hasQR) {
         // QR code layout
         const qrDataURL = getQRDataURL(item, spec);
         const qrPosition = bc.position || 'right';
         const qrSize = (spec.labelH * 0.85).toFixed(3); // QR is ~85% of label height
-        
+
         if (qrPosition === 'only') {
           // QR code only, no text
           html += '<div class="print-label" style="top:' + top + 'in;left:' + left + 'in;width:' + spec.labelW + 'in;height:' + labelH + 'in;padding:0.05in;justify-content:center;align-items:center;">';
@@ -26190,7 +26220,7 @@ function wf1ExecuteIndividualPrint() {
   
   // Use the canonical buildSheetPrintHtml (same as sheets tab print button)
   const printHtml = buildSheetPrintHtml(sh, printManifest);
-  
+
   // Print via iframe
   const iframe = document.createElement('iframe');
   iframe.style.cssText = 'position:fixed;top:0;left:0;width:0;height:0;border:none;visibility:hidden;';
@@ -26199,10 +26229,40 @@ function wf1ExecuteIndividualPrint() {
   iframeDoc.open();
   iframeDoc.write(printHtml);
   iframeDoc.close();
-  iframe.contentWindow.focus();
-  iframe.contentWindow.print();
-  setTimeout(function() { document.body.removeChild(iframe); }, 1000);
-  
+
+  // Wait for images to load before printing (remote URLs like Firebase Storage need time to fetch)
+  function triggerWf1Print() {
+    iframe.contentWindow.focus();
+    iframe.contentWindow.print();
+    setTimeout(function() { document.body.removeChild(iframe); }, 1000);
+  }
+  var iframeImages = iframeDoc.querySelectorAll('img');
+  var pendingImages = Array.from(iframeImages).filter(function(img) { return !img.complete; });
+  if (pendingImages.length > 0) {
+    var imgLoaded = 0;
+    var printFired = false;
+    var onImgReady = function() {
+      imgLoaded++;
+      if (imgLoaded >= pendingImages.length && !printFired) {
+        printFired = true;
+        triggerWf1Print();
+      }
+    };
+    pendingImages.forEach(function(img) {
+      img.addEventListener('load', onImgReady);
+      img.addEventListener('error', onImgReady);
+    });
+    // Fallback: don't wait more than 3 seconds for images
+    setTimeout(function() {
+      if (!printFired) {
+        printFired = true;
+        triggerWf1Print();
+      }
+    }, 3000);
+  } else {
+    triggerWf1Print();
+  }
+
   // Store for post-print
   wf1PrintResult = { sheetId, positions, isNewSheet, totalLabels: positions.length };
   
