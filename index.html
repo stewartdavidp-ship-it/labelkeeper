@@ -12954,7 +12954,7 @@ function renderUnifiedLabelPreview(config, options = {}) {
   const previewQRSize = Math.max(Math.floor(height * 0.35), 28);
 
   if (hasSideContent) {
-    html += '<div style="display:flex;align-items:center;width:100%;gap:6px;">';
+    html += '<div style="display:flex;align-items:center;width:100%;gap:10px;">';
 
     // Left side
     if (qrPosition === 'left' && barcode.data) {
@@ -21218,7 +21218,7 @@ function buildSheetPrintHtml(sh, manifest) {
         }
 
         // Center: text
-        innerHtml += '<div class="print-text-zone" style="justify-content:' + getFlexAlign(item.alignV) + ';padding:0 0.06in;">' + linesHtml + '</div>';
+        innerHtml += '<div class="print-text-zone" style="justify-content:' + getFlexAlign(item.alignV) + ';">' + linesHtml + '</div>';
 
         // Right side
         if (gfx.right && gfx.right.data) {
@@ -21228,7 +21228,7 @@ function buildSheetPrintHtml(sh, manifest) {
           innerHtml += '<div class="print-qr" style="width:' + qrSize + 'in;height:' + qrSize + 'in;"><img src="' + qrDataURL + '"></div>';
         }
 
-        html += '<div class="print-label" style="top:' + top + 'in;left:' + left + 'in;width:' + spec.labelW + 'in;height:' + labelH + 'in;padding:0.08in 0.12in;flex-direction:row;align-items:center;">' + innerHtml + '</div>';
+        html += '<div class="print-label" style="top:' + top + 'in;left:' + left + 'in;width:' + spec.labelW + 'in;height:' + labelH + 'in;padding:0.1in 0.15in;flex-direction:row;align-items:center;gap:0.12in;">' + innerHtml + '</div>';
       } else if (hasQR) {
         // QR code layout
         const qrDataURL = getQRDataURL(item, spec);
@@ -30434,8 +30434,9 @@ function handleUrlDeepLink(params) {
     // Clear the payload immediately (one-time use)
     localStorage.removeItem('lk_printCard');
 
-    // Set label type to business card
+    // Set label type to business card + enable boundaries for design review
     settings.lastLabelType = '5371';
+    settings.showLabelBoundaries = true;
     saveSettings();
 
     // Start WF1 to reset state and show the wizard container
