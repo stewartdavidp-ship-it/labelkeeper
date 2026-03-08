@@ -9368,10 +9368,23 @@ const QRCode = (function() {
       options = options || {};
       const size = options.size || 100;
       const margin = options.margin !== undefined ? options.margin : 2;
-      const dark = options.dark || '#000000';
-      const light = options.light || '#ffffff';
       const errorLevel = options.errorLevel || 0;
 
+      // Use CDN library's built-in createDataURL (same renderer Shir Glassworks uses)
+      if (typeof qrcode === 'function') {
+        const ecLevels = ['L', 'M', 'Q', 'H'];
+        const qr = qrcode(0, ecLevels[errorLevel]);
+        qr.addData(text);
+        qr.make();
+        const moduleCount = qr.getModuleCount();
+        const cellSize = Math.max(Math.floor(size / (moduleCount + margin * 2)), 1);
+        // Library's createDataURL(cellSize, margin) — margin is in pixels
+        return qr.createDataURL(cellSize, margin * cellSize);
+      }
+
+      // Fallback: custom canvas rendering
+      const dark = options.dark || '#000000';
+      const light = options.light || '#ffffff';
       const qr = this.create(text, errorLevel);
       const moduleCount = qr.getModuleCount();
       const cellSize = Math.floor(size / (moduleCount + margin * 2));
