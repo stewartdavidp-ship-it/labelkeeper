@@ -21202,11 +21202,11 @@ function buildSheetPrintHtml(sh, manifest) {
         const qrDataURL = getQRDataURL(item, spec);
         const qrPosition = bc.position || 'right';
         const availH = spec.labelH - 0.16; // usable height minus vertical padding
-        // Graphic: fill available height, cap width at 35% of label width
-        const maxGfxW = spec.labelW * 0.35;
+        // Graphic: fill available height, cap width at 25% of label width
+        const maxGfxW = spec.labelW * 0.25;
         const gfxW = Math.min(availH, maxGfxW).toFixed(3);
-        // QR: 35% of label height (compact but scannable when sharing space with graphics)
-        const qrSize = (spec.labelH * 0.35).toFixed(3);
+        // QR: 30% of label height (compact but scannable when sharing space with graphics)
+        const qrSize = (spec.labelH * 0.30).toFixed(3);
         let innerHtml = '';
 
         // Left side
