@@ -13239,7 +13239,12 @@ function parseUrlParams() {
     };
   }
 
-  // Check for printCard deep link (from Shir Glassworks admin)
+  // Check for session-based printCard (new API flow)
+  if (params.has('session')) {
+    return { hasParams: true, action: 'printCardSession', sessionId: params.get('session') };
+  }
+
+  // Check for printCard deep link (legacy localStorage flow)
   if (params.get('action') === 'printCard') {
     return { hasParams: true, action: 'printCard' };
   }
@@ -29187,6 +29192,7 @@ function performImport(data) {
 // ============================================================================
 
 const FIREBASE_SYNC_URL = 'https://word-boxing-default-rtdb.firebaseio.com/labelkeeper_sync';
+const LK_API_URL = 'https://labelkeeper-api-300155036194.us-central1.run.app';
 const SYNC_CODE_LENGTH = 6;
 const SYNC_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -29198,6 +29204,77 @@ function generateSyncCode() {
     code += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return code;
+}
+
+// ── Label Keeper API wrappers (with Firebase REST fallback) ──
+
+// Share sync data via API, returns { code }
+async function lkApiSyncShare(data) {
+  try {
+    const resp = await fetch(LK_API_URL + '/sync/share', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data })
+    });
+    if (!resp.ok) throw new Error('API error ' + resp.status);
+    return await resp.json();
+  } catch (e) {
+    console.warn('LK API unavailable, falling back to direct Firebase:', e.message);
+    const code = generateSyncCode();
+    data.expiresAt = Date.now() + SYNC_EXPIRY_MS;
+    const fbResp = await fetch(FIREBASE_SYNC_URL + '/' + code + '.json', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    if (!fbResp.ok) throw new Error('Failed to upload sync data');
+    return { code };
+  }
+}
+
+// Receive sync data by code via API, returns raw data object
+async function lkApiSyncReceive(code) {
+  try {
+    const resp = await fetch(LK_API_URL + '/sync/receive', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code })
+    });
+    if (resp.status === 404) throw new Error('Invalid or expired code');
+    if (resp.status === 410) throw new Error('This code has expired');
+    if (!resp.ok) throw new Error('API error ' + resp.status);
+    const result = await resp.json();
+    return result.data;
+  } catch (e) {
+    if (e.message === 'Invalid or expired code' || e.message === 'This code has expired') throw e;
+    console.warn('LK API unavailable, falling back to direct Firebase:', e.message);
+    const resp = await fetch(FIREBASE_SYNC_URL + '/' + code + '.json');
+    if (!resp.ok) throw new Error('Network error');
+    const data = await resp.json();
+    if (!data) throw new Error('Invalid or expired code');
+    if (data.expiresAt && Date.now() > data.expiresAt) {
+      lkApiSyncCleanup(code);
+      throw new Error('This code has expired');
+    }
+    return data;
+  }
+}
+
+// Cleanup sync code via API
+async function lkApiSyncCleanup(code) {
+  try {
+    await fetch(LK_API_URL + '/sync/cleanup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code })
+    });
+  } catch (e) {
+    try {
+      await fetch(FIREBASE_SYNC_URL + '/' + code + '.json', { method: 'DELETE' });
+    } catch (err) {
+      console.log('Cleanup failed (may already be deleted):', err);
+    }
+  }
 }
 
 // Show sync modal
@@ -29213,8 +29290,6 @@ function closeSyncModal() {
 
 // Start sharing data to another device
 async function startSyncShare() {
-  const code = generateSyncCode();
-  
   // Show loading state
   showSyncModal('Share to Another Device', `
     <div style="text-align: center; padding: 20px;">
@@ -29222,12 +29297,11 @@ async function startSyncShare() {
       <div>Preparing sync code...</div>
     </div>
   `);
-  
+
   // Prepare data
   const data = {
     version: '3.27.7',
     exportedAt: new Date().toISOString(),
-    expiresAt: Date.now() + SYNC_EXPIRY_MS,
     sheets: sheets,
     activeSheetId: activeSheetId,
     savedTexts: savedTexts,
@@ -29235,18 +29309,10 @@ async function startSyncShare() {
     inventoryHistory: inventoryHistory,
     customTokens: customTokens
   };
-  
+
   try {
-    // Upload to Firebase
-    const response = await fetch(FIREBASE_SYNC_URL + '/' + code + '.json', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
-    });
-    
-    if (!response.ok) {
-      throw new Error('Failed to upload sync data');
-    }
+    const result = await lkApiSyncShare(data);
+    const code = result.code;
     
     // Show the code
     showSyncModal('Share to Another Device', `
@@ -29290,15 +29356,9 @@ async function startSyncShare() {
   }
 }
 
-// Cleanup sync code from Firebase
+// Cleanup sync code (delegates to API wrapper)
 async function cleanupSyncCode(code) {
-  try {
-    await fetch(FIREBASE_SYNC_URL + '/' + code + '.json', {
-      method: 'DELETE'
-    });
-  } catch (err) {
-    console.log('Cleanup failed (may already be deleted):', err);
-  }
+  await lkApiSyncCleanup(code);
 }
 
 // Start receiving data from another device
@@ -29355,31 +29415,13 @@ async function receiveSyncData() {
   `);
   
   try {
-    // Fetch from Firebase
-    const response = await fetch(FIREBASE_SYNC_URL + '/' + code + '.json');
-    
-    if (!response.ok) {
-      throw new Error('Network error');
-    }
-    
-    const data = await response.json();
-    
-    if (!data) {
-      throw new Error('Invalid or expired code');
-    }
-    
-    // Check expiry
-    if (data.expiresAt && Date.now() > data.expiresAt) {
-      // Clean up expired data
-      cleanupSyncCode(code);
-      throw new Error('This code has expired');
-    }
-    
+    const data = await lkApiSyncReceive(code);
+
     // Validate data structure
     if (!data.version || !data.exportedAt) {
       throw new Error('Invalid sync data');
     }
-    
+
     // Show confirmation with stats
     const sheetCount = data.sheets ? Object.keys(data.sheets).length : 0;
     const textCount = data.savedTexts ? data.savedTexts.length : 0;
@@ -29593,14 +29635,12 @@ function updateWorkflowsForRole() {
 // SATELLITE: Share pending content to primary
 async function satelliteShareToPrimary() {
   const pending = getSatellitePending();
-  
+
   if (pending.length === 0) {
     showToast('No pending items to share', 'info');
     return;
   }
-  
-  const code = generateSyncCode();
-  
+
   // Show loading state
   showSyncModal('Share to Primary', `
     <div style="text-align: center; padding: 20px;">
@@ -29608,31 +29648,22 @@ async function satelliteShareToPrimary() {
       <div>Preparing sync code...</div>
     </div>
   `);
-  
+
   // Prepare data - only pending items
   const pendingTexts = savedTexts.filter(t => pending.includes(t.id));
-  
+
   const data = {
     version: '3.27.7',
     type: 'satellite_contribution',
     storeId: getOrCreateStoreId(),
     exportedAt: new Date().toISOString(),
-    expiresAt: Date.now() + SYNC_EXPIRY_MS,
     savedTexts: pendingTexts,
     pendingIds: pending
   };
-  
+
   try {
-    // Upload to Firebase
-    const response = await fetch(FIREBASE_SYNC_URL + '/' + code + '.json', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
-    });
-    
-    if (!response.ok) {
-      throw new Error('Failed to upload sync data');
-    }
+    const result = await lkApiSyncShare(data);
+    const code = result.code;
     
     // Show the code
     showSyncModal('Share to Primary', `
@@ -29733,32 +29764,16 @@ async function receivePrimaryData() {
   `);
   
   try {
-    const response = await fetch(FIREBASE_SYNC_URL + '/' + code + '.json');
-    
-    if (!response.ok) {
-      throw new Error('Network error');
-    }
-    
-    const data = await response.json();
-    
-    if (!data) {
-      throw new Error('Invalid or expired code');
-    }
-    
-    // Check expiry
-    if (data.expiresAt && Date.now() > data.expiresAt) {
-      cleanupSyncCode(code);
-      throw new Error('This code has expired');
-    }
-    
+    const data = await lkApiSyncReceive(code);
+
     // Validate - should be primary share or transfer data
     if (data.type === 'satellite_contribution') {
       throw new Error('This is satellite data. Use "Receive from Satellite" on your primary device.');
     }
-    
+
     // Check if this is a primary transfer
     const isTransfer = data.type === 'primary_transfer';
-    
+
     // Check if this device has existing data that will be overwritten
     const localSheetCount = Object.keys(sheets).length;
     const localTextCount = savedTexts.length;
@@ -29953,23 +29968,8 @@ async function receiveSatelliteData() {
   `);
   
   try {
-    const response = await fetch(FIREBASE_SYNC_URL + '/' + code + '.json');
-    
-    if (!response.ok) {
-      throw new Error('Network error');
-    }
-    
-    const data = await response.json();
-    
-    if (!data) {
-      throw new Error('Invalid or expired code');
-    }
-    
-    if (data.expiresAt && Date.now() > data.expiresAt) {
-      cleanupSyncCode(code);
-      throw new Error('This code has expired');
-    }
-    
+    const data = await lkApiSyncReceive(code);
+
     // Validate - should be satellite contribution
     if (data.type !== 'satellite_contribution') {
       throw new Error('This is not satellite data. Make sure your satellite device used "Share to Primary".');
@@ -30048,21 +30048,18 @@ function confirmPrimaryReceive() {
 
 // PRIMARY: Share full state to satellite
 async function primaryShareToSatellite() {
-  const code = generateSyncCode();
-  
   showSyncModal('Share to Satellite', `
     <div style="text-align: center; padding: 20px;">
       <div style="font-size: 24px; margin-bottom: 12px;">⏳</div>
       <div>Preparing sync code...</div>
     </div>
   `);
-  
+
   // Prepare full state data
   const data = {
     version: '3.27.7',
     type: 'primary_share',
     exportedAt: new Date().toISOString(),
-    expiresAt: Date.now() + SYNC_EXPIRY_MS,
     sheets: sheets,
     activeSheetId: activeSheetId,
     savedTexts: savedTexts,
@@ -30070,17 +30067,10 @@ async function primaryShareToSatellite() {
     inventoryHistory: inventoryHistory,
     customTokens: customTokens
   };
-  
+
   try {
-    const response = await fetch(FIREBASE_SYNC_URL + '/' + code + '.json', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
-    });
-    
-    if (!response.ok) {
-      throw new Error('Failed to upload sync data');
-    }
+    const result = await lkApiSyncShare(data);
+    const code = result.code;
     
     const sheetCount = Object.keys(sheets).length;
     const textCount = savedTexts.length;
@@ -30142,21 +30132,18 @@ async function primaryTransferRole() {
     async (confirmed) => {
       if (!confirmed) return;
       
-      const code = generateSyncCode();
-      
       showSyncModal('Transfer Primary Role', `
         <div style="text-align: center; padding: 20px;">
           <div style="font-size: 24px; margin-bottom: 12px;">⏳</div>
           <div>Preparing transfer code...</div>
         </div>
       `);
-      
+
       // Prepare transfer data - includes full state + transfer flag
       const data = {
         version: '3.27.7',
         type: 'primary_transfer',
         exportedAt: new Date().toISOString(),
-        expiresAt: Date.now() + SYNC_EXPIRY_MS,
         sheets: sheets,
         activeSheetId: activeSheetId,
         savedTexts: savedTexts,
@@ -30164,17 +30151,10 @@ async function primaryTransferRole() {
         customTokens: customTokens,
         printHistory: printHistory
       };
-      
+
       try {
-        const response = await fetch(FIREBASE_SYNC_URL + '/' + code + '.json', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data)
-        });
-        
-        if (!response.ok) {
-          throw new Error('Failed to upload transfer data');
-        }
+        const result = await lkApiSyncShare(data);
+        const code = result.code;
         
         const sheetCount = Object.keys(sheets).length;
         const textCount = savedTexts.length;
@@ -30414,7 +30394,77 @@ function handleUrlDeepLink(params) {
     return;
   }
   
-  // Handle printCard deep link (from Shir Glassworks admin — product card with image + QR)
+  // Handle session-based printCard (new API flow)
+  if (params.action === 'printCardSession' && params.sessionId) {
+    (async function() {
+      try {
+        const resp = await fetch(LK_API_URL + '/sessions/' + params.sessionId);
+        if (!resp.ok) {
+          showToast('Product card session expired or not found. Try again from the admin.', 'warning');
+          return;
+        }
+        const payload = await resp.json();
+
+        // Same rendering logic as legacy printCard
+        settings.lastLabelType = '5371';
+        settings.showLabelBoundaries = true;
+        saveSettings();
+        wf1Start();
+
+        setTimeout(function() {
+          var cardLines = [
+            { text: payload.productName || '', align: 'center', fontSize: 14, fontFamily: 'elegant', bold: true, italic: false, underline: false, strikethrough: false, color: '', fillColor: '', borders: '' },
+            { text: 'Shir Glassworks', align: 'center', fontSize: 10, fontFamily: 'default', bold: false, italic: false, underline: false, strikethrough: false, color: '#666666', fillColor: '', borders: '' },
+            { text: 'shirglassworks.com', align: 'center', fontSize: 8, fontFamily: 'default', bold: false, italic: false, underline: false, strikethrough: false, color: '#999999', fillColor: '', borders: '' },
+            { text: '', align: 'left', fontSize: 11, fontFamily: 'default', bold: false, italic: false, underline: false, strikethrough: false, color: '', fillColor: '', borders: '' }
+          ];
+
+          wf1LabelType = '5371';
+          wf1JobType = 'individual';
+          wf1Quantity = 1;
+          wf1Orientation = 'next';
+
+          var matchingSheets = Object.values(sheets)
+            .filter(function(s) { return s.labelType === '5371' && !s.retired && getRemainingCount(s) > 0; })
+            .sort(function(a, b) { return (b.lastUsedAt || 0) - (a.lastUsedAt || 0); });
+          if (matchingSheets.length > 0) {
+            wf1SelectedSheet = { isNew: false, id: matchingSheets[0].id };
+          } else {
+            wf1SelectedSheet = { isNew: true };
+          }
+          wf1ContentLines = cardLines;
+
+          wf1FeSnapshot = {
+            lines: cardLines,
+            graphics: {
+              left: payload.productImage ? { data: payload.productImage, size: 'M' } : null,
+              right: null
+            },
+            alignV: 'center',
+            border: { top: false, bottom: false, left: false, right: false, color: '#000000' },
+            barcode: {
+              enabled: true,
+              type: 'qr',
+              position: 'right',
+              encodeType: 'url',
+              fixedData: payload.storyUrl
+            }
+          };
+
+          wf1Step = 7;
+          wf1RenderPreview();
+          wf1ShowStep('wf1Step7');
+          showToast('Product card ready — "' + (payload.productName || 'Unknown') + '"', 'success');
+        }, 300);
+      } catch (e) {
+        console.error('Session fetch error:', e);
+        showToast('Failed to load product card. Try again.', 'error');
+      }
+    })();
+    return;
+  }
+
+  // Handle printCard deep link (legacy localStorage flow)
   if (params.action === 'printCard') {
     const payloadStr = localStorage.getItem('lk_printCard');
     if (!payloadStr) {
