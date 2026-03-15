@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <meta name="gs-app-id" content="labelkeeper">
-<meta name="version" content="3.28.0">
+<meta name="version" content="3.28.1">
 
 <!-- App Meta Tags -->
 <meta name="description" content="Print labels without wasting a single position. Track which spots on your label sheets have been used.">
@@ -7409,7 +7409,7 @@ body.dark-mode .wf1-narrowed-option.suggested::after {
   <header class="app-header">
     <div class="app-title">
       🏷️ LabelKeeper
-      <span class="version">v3.28.0</span>
+      <span class="version">v3.28.1</span>
     </div>
     <div class="header-actions">
       <div id="lkAuthUI"></div>
@@ -9002,7 +9002,7 @@ Examples:
     <div class="welcome-header">
       <div class="welcome-icon">🏷️</div>
       <div class="welcome-title">Welcome to LabelKeeper</div>
-      <div class="welcome-version">v3.28.0</div>
+      <div class="welcome-version">v3.28.1</div>
     </div>
     <div class="welcome-body">
       <div class="welcome-tagline">
@@ -14265,7 +14265,7 @@ function cloneSavedText(id, newName) {
 
 function exportAllDataJSON() {
   const data = {
-    version: '3.28.0',
+    version: '3.28.1',
     exportedAt: new Date().toISOString(),
     sheets,
     savedTexts,
@@ -19324,6 +19324,30 @@ function openFullEditorFromWizard() {
         feLines[i - 1].fontSize = wf1LineSizes[i - 1] || 11;
       }
     }
+
+    // Transfer saved content properties (alignV, graphics, border, barcode) to Full Editor
+    if (wf1SelectedSavedTextId) {
+      const savedText = getSavedText(wf1SelectedSavedTextId);
+      if (savedText) {
+        feAlignV = savedText.alignV || 'center';
+        document.querySelectorAll('.fe-valign-btn').forEach(btn => {
+          btn.classList.toggle('active', btn.dataset.valign === feAlignV);
+        });
+        if (savedText.graphics) {
+          feGraphics = { ...savedText.graphics };
+          renderFeGraphics();
+        }
+        if (savedText.border) {
+          feBorder = { ...savedText.border };
+          renderFeBorder();
+        }
+        if (savedText.barcode) {
+          feCurrentBarcode = { ...savedText.barcode };
+          renderFeBarcode();
+        }
+      }
+    }
+
     updateFullEditorPreview();
     showToast('Switched to full editor. Use "Back to Wizard" when done.', 'info');
     return;
@@ -29526,7 +29550,7 @@ function safeLoad(key, defaultValue) {
 
 function exportAllData() {
   const data = {
-    version: '3.28.0',
+    version: '3.28.1',
     exportedAt: new Date().toISOString(),
     settings: settings,
     sheets: sheets,
@@ -29767,7 +29791,7 @@ async function startSyncShare() {
 
   // Prepare data
   const data = {
-    version: '3.28.0',
+    version: '3.28.1',
     exportedAt: new Date().toISOString(),
     sheets: sheets,
     activeSheetId: activeSheetId,
@@ -30120,7 +30144,7 @@ async function satelliteShareToPrimary() {
   const pendingTexts = savedTexts.filter(t => pending.includes(t.id));
 
   const data = {
-    version: '3.28.0',
+    version: '3.28.1',
     type: 'satellite_contribution',
     storeId: getOrCreateStoreId(),
     exportedAt: new Date().toISOString(),
@@ -30524,7 +30548,7 @@ async function primaryShareToSatellite() {
 
   // Prepare full state data
   const data = {
-    version: '3.28.0',
+    version: '3.28.1',
     type: 'primary_share',
     exportedAt: new Date().toISOString(),
     sheets: sheets,
@@ -30608,7 +30632,7 @@ async function primaryTransferRole() {
 
       // Prepare transfer data - includes full state + transfer flag
       const data = {
-        version: '3.28.0',
+        version: '3.28.1',
         type: 'primary_transfer',
         exportedAt: new Date().toISOString(),
         sheets: sheets,
@@ -30821,7 +30845,7 @@ function init() {
   
   // Log stats for debugging
   const stats = getDataStats();
-  console.log('LabelKeeper v3.28.0 initialized', stats);
+  console.log('LabelKeeper v3.28.1 initialized', stats);
 }
 
 // ========== PRINT CARD AUTH HELPERS (must be global — called from onAuthStateChanged) ==========
