@@ -24893,14 +24893,18 @@ function wf1UpdateEditorPreview() {
       fontSize: wf1LineSizes[i - 1]
     };
 
-    // Get style from snapshot if available (from style template or Full Editor)
+    // Get style from snapshot (Full Editor/style template) or from saved content lines
     const snap = wf1FeSnapshot && wf1FeSnapshot.lines[i - 1];
-    if (snap) {
-      if (snap.fontFamily) lineObj.fontFamily = snap.fontFamily;
-      if (snap.color) lineObj.color = snap.color;
-      if (snap.bold) lineObj.bold = snap.bold;
-      if (snap.italic) lineObj.italic = snap.italic;
-      if (snap.underline) lineObj.underline = snap.underline;
+    const saved = wf1ContentLines && wf1ContentLines[i - 1];
+    const styleSource = snap || saved;
+    if (styleSource) {
+      if (styleSource.fontFamily) lineObj.fontFamily = styleSource.fontFamily;
+      if (styleSource.color) lineObj.color = styleSource.color;
+      if (styleSource.bold) lineObj.bold = styleSource.bold;
+      if (styleSource.italic) lineObj.italic = styleSource.italic;
+      if (styleSource.underline) lineObj.underline = styleSource.underline;
+      if (styleSource.strikethrough) lineObj.strikethrough = styleSource.strikethrough;
+      if (styleSource.fillColor) lineObj.fillColor = styleSource.fillColor;
     }
 
     lineObjects.push(lineObj);
