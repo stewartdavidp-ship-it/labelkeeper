@@ -26215,12 +26215,22 @@ function wf1RenderPreview() {
   html += '</div>';
   // === END SHEET LOADING INSTRUCTIONS ===
   
-  // Get any rich formatting from Full Editor snapshot
+  // Get any rich formatting from saved content or Full Editor snapshot
   let graphics = null;
   let border = null;
   let barcode = null;
   let alignV = 'center';
-  
+
+  if (wf1SelectedSavedTextId) {
+    const savedText = getSavedText(wf1SelectedSavedTextId);
+    if (savedText) {
+      graphics = savedText.graphics || null;
+      border = savedText.border || null;
+      barcode = savedText.barcode ? { ...savedText.barcode } : null;
+      alignV = savedText.alignV || 'center';
+    }
+  }
+
   if (wf1FeSnapshot) {
     graphics = wf1FeSnapshot.graphics || null;
     border = wf1FeSnapshot.border || null;
