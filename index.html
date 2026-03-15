@@ -5862,9 +5862,13 @@ body.dark-mode .wf1-narrowed-option.suggested::after {
 /* ===== WF1 Step 7: Preview ===== */
 .wf1-preview-summary { font-size: 14px; color: var(--text-muted); margin-bottom: 16px; }
 .wf1-preview-frame {
-  border: 2px solid var(--border); border-radius: var(--radius-sm);
-  padding: 16px; background: #fff; min-height: 120px;
-  display: flex; flex-direction: column; justify-content: center; align-items: center;
+  border: 2px solid var(--border); border-radius: 10px;
+  padding: 16px; min-height: 120px;
+  display: flex; justify-content: center; align-items: center;
+  background: repeating-conic-gradient(#d8d8d2 0% 25%, #e4e4de 0% 50%) 50% / 12px 12px;
+}
+[data-theme="dark"] .wf1-preview-frame {
+  background: repeating-conic-gradient(#2a2a32 0% 25%, #1e1e26 0% 50%) 50% / 12px 12px;
 }
 .wf1-preview-label-box {
   border: 1px dashed #ccc; padding: 10px 14px; max-width: 300px; width: 100%; box-sizing: border-box;
@@ -25092,13 +25096,20 @@ function wf1GetEditorLines() {
           borders: snap.borders || ''
         });
       } else {
+        // Fall back to saved content lines for styles (underline, bold, etc.)
+        const saved = wf1ContentLines && wf1ContentLines[i - 1];
         lines.push({
           text: text,
           align: wf1LineAligns[i - 1],
           fontSize: wf1LineSizes[i - 1],
-          fontFamily: 'default',
-          bold: false, italic: false, underline: false, strikethrough: false,
-          color: '', fillColor: '', borders: ''
+          fontFamily: (saved && saved.fontFamily) || 'default',
+          bold: (saved && saved.bold) || false,
+          italic: (saved && saved.italic) || false,
+          underline: (saved && saved.underline) || false,
+          strikethrough: (saved && saved.strikethrough) || false,
+          color: (saved && saved.color) || '',
+          fillColor: (saved && saved.fillColor) || '',
+          borders: (saved && saved.borders) || ''
         });
       }
     }
