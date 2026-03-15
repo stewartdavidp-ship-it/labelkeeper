@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <meta name="gs-app-id" content="labelkeeper">
-<meta name="version" content="3.28.1">
+<meta name="version" content="3.28.2">
 
 <!-- App Meta Tags -->
 <meta name="description" content="Print labels without wasting a single position. Track which spots on your label sheets have been used.">
@@ -7409,7 +7409,7 @@ body.dark-mode .wf1-narrowed-option.suggested::after {
   <header class="app-header">
     <div class="app-title">
       🏷️ LabelKeeper
-      <span class="version">v3.28.1</span>
+      <span class="version">v3.28.2</span>
     </div>
     <div class="header-actions">
       <div id="lkAuthUI"></div>
@@ -9002,7 +9002,7 @@ Examples:
     <div class="welcome-header">
       <div class="welcome-icon">🏷️</div>
       <div class="welcome-title">Welcome to LabelKeeper</div>
-      <div class="welcome-version">v3.28.1</div>
+      <div class="welcome-version">v3.28.2</div>
     </div>
     <div class="welcome-body">
       <div class="welcome-tagline">
@@ -14265,7 +14265,7 @@ function cloneSavedText(id, newName) {
 
 function exportAllDataJSON() {
   const data = {
-    version: '3.28.1',
+    version: '3.28.2',
     exportedAt: new Date().toISOString(),
     sheets,
     savedTexts,
@@ -24658,8 +24658,8 @@ function wf1RenderIndividualEditor(area) {
   // Preview
   html += '<div class="editor-preview-section">' +
     '<div class="editor-preview-label">Preview</div>' +
-    '<div class="editor-preview-frame" id="wf1PreviewBox">' +
-      '<div class="preview-line align-left" style="font-size:11px; color:#999;">Your text will appear here</div>' +
+    '<div class="fe-preview-container" id="wf1PreviewBox">' +
+      '<div class="fe-preview-label empty-preview" style="width:200px;min-height:80px;"><span>Your text will appear here</span></div>' +
     '</div>' +
   '</div>';
   
@@ -24947,21 +24947,80 @@ function wf1UpdateEditorPreview() {
     }
   }
 
+  // Get label dimensions
+  const labelType = wf1LabelType || settings.lastLabelType || '5160';
+  const spec = LABEL_TYPES[labelType];
+  const aspectRatio = spec ? (spec.labelW / spec.labelH) : 2.5;
+  const maxWidth = 300;
+  const width = Math.min(maxWidth, spec ? spec.labelW * 72 : 200);
+  const height = width / aspectRatio;
+
   if (lineObjects.length === 0 && !graphics && !barcode) {
-    box.innerHTML = '<div class="preview-line align-left" style="font-size:11px; color:#999;">Your text will appear here</div>';
+    box.innerHTML = '<div class="fe-preview-label empty-preview" style="width:' + width + 'px;min-height:' + height + 'px;"><span>Your text will appear here</span></div>';
     wf1UpdateContentNextBtn();
     return;
   }
 
-  // Use the unified label preview renderer — same as Full Editor and print
-  box.innerHTML = renderUnifiedLabelPreview({
-    lines: lineObjects,
-    graphics: graphics,
-    border: border,
-    barcode: barcode,
-    alignV: alignV,
-    labelType: wf1LabelType
-  }, { showPlaceholder: false });
+  // Build preview HTML using the same approach as the Full Editor
+  const linesHtml = renderLabelPreviewHtml(lineObjects);
+
+  // Vertical alignment
+  let justifyContent = 'center';
+  if (alignV === 'top') justifyContent = 'flex-start';
+  else if (alignV === 'bottom') justifyContent = 'flex-end';
+  else if (alignV === 'spread') justifyContent = 'space-between';
+
+  // Border styles
+  const borderColor = (border && border.color) || '#000';
+  const defaultBorder = '2px solid #888';
+  const bTop = border && border.top ? '2px solid ' + borderColor : defaultBorder;
+  const bBottom = border && border.bottom ? '2px solid ' + borderColor : defaultBorder;
+  const bLeft = border && border.left ? '2px solid ' + borderColor : defaultBorder;
+  const bRight = border && border.right ? '2px solid ' + borderColor : defaultBorder;
+
+  let html = '<div class="fe-preview-label" style="width:' + width + 'px;min-height:' + height + 'px;justify-content:' + justifyContent + ';border-top:' + bTop + ';border-bottom:' + bBottom + ';border-left:' + bLeft + ';border-right:' + bRight + ';">';
+
+  // Check for side content (graphics/QR)
+  const hasQR = barcode && barcode.enabled && barcode.type === 'qr';
+  const qrPosition = hasQR ? barcode.position : null;
+  const qrOnly = qrPosition === 'only';
+  const hasLeftGfx = graphics && graphics.left && graphics.left.data;
+  const hasRightGfx = graphics && graphics.right && graphics.right.data;
+  const hasLeftContent = hasLeftGfx || qrPosition === 'left';
+  const hasRightContent = hasRightGfx || qrPosition === 'right';
+
+  // Generate QR if needed
+  let qrDataUrl = null;
+  if (hasQR && barcode.data) {
+    qrDataUrl = generateQRDataURL(barcode.data, Math.min(height - 16, 80));
+  }
+
+  if (qrOnly && qrDataUrl) {
+    html += '<div style="display:flex;justify-content:center;align-items:center;width:100%;height:100%;"><img src="' + qrDataUrl + '" style="max-width:80px;max-height:80px;"></div>';
+  } else if (hasLeftContent || hasRightContent) {
+    html += '<div style="display:flex;align-items:center;width:100%;gap:6px;flex:1;">';
+    if (qrPosition === 'left' && qrDataUrl) {
+      html += '<div style="flex-shrink:0;"><img src="' + qrDataUrl + '" style="width:40px;height:40px;"></div>';
+    } else if (hasLeftGfx) {
+      const gfx = graphics.left;
+      const sz = gfx.size === 'S' ? 24 : gfx.size === 'L' ? 48 : 36;
+      html += '<div style="flex-shrink:0;"><img src="' + gfx.data + '" style="width:' + sz + 'px;height:' + sz + 'px;object-fit:contain;"></div>';
+    }
+    html += '<div style="flex:1;min-width:0;">' + linesHtml + '</div>';
+    if (qrPosition === 'right' && qrDataUrl) {
+      html += '<div style="flex-shrink:0;"><img src="' + qrDataUrl + '" style="width:40px;height:40px;"></div>';
+    } else if (hasRightGfx) {
+      const gfx = graphics.right;
+      const sz = gfx.size === 'S' ? 24 : gfx.size === 'L' ? 48 : 36;
+      html += '<div style="flex-shrink:0;"><img src="' + gfx.data + '" style="width:' + sz + 'px;height:' + sz + 'px;object-fit:contain;"></div>';
+    }
+    html += '</div>';
+  } else {
+    html += linesHtml;
+  }
+
+  html += '</div>';
+  box.innerHTML = html;
 
   wf1UpdateContentNextBtn();
 }
@@ -29524,7 +29583,7 @@ function safeLoad(key, defaultValue) {
 
 function exportAllData() {
   const data = {
-    version: '3.28.1',
+    version: '3.28.2',
     exportedAt: new Date().toISOString(),
     settings: settings,
     sheets: sheets,
@@ -29765,7 +29824,7 @@ async function startSyncShare() {
 
   // Prepare data
   const data = {
-    version: '3.28.1',
+    version: '3.28.2',
     exportedAt: new Date().toISOString(),
     sheets: sheets,
     activeSheetId: activeSheetId,
@@ -30118,7 +30177,7 @@ async function satelliteShareToPrimary() {
   const pendingTexts = savedTexts.filter(t => pending.includes(t.id));
 
   const data = {
-    version: '3.28.1',
+    version: '3.28.2',
     type: 'satellite_contribution',
     storeId: getOrCreateStoreId(),
     exportedAt: new Date().toISOString(),
@@ -30522,7 +30581,7 @@ async function primaryShareToSatellite() {
 
   // Prepare full state data
   const data = {
-    version: '3.28.1',
+    version: '3.28.2',
     type: 'primary_share',
     exportedAt: new Date().toISOString(),
     sheets: sheets,
@@ -30606,7 +30665,7 @@ async function primaryTransferRole() {
 
       // Prepare transfer data - includes full state + transfer flag
       const data = {
-        version: '3.28.1',
+        version: '3.28.2',
         type: 'primary_transfer',
         exportedAt: new Date().toISOString(),
         sheets: sheets,
@@ -30819,7 +30878,7 @@ function init() {
   
   // Log stats for debugging
   const stats = getDataStats();
-  console.log('LabelKeeper v3.28.1 initialized', stats);
+  console.log('LabelKeeper v3.28.2 initialized', stats);
 }
 
 // ========== PRINT CARD AUTH HELPERS (must be global — called from onAuthStateChanged) ==========
