@@ -13777,7 +13777,9 @@ function saveSavedTexts() {
     localStorage.setItem(TEXTS_KEY, JSON.stringify(savedTexts));
     const ref = cloudStore._ref('texts');
     if (ref) {
-      ref.set(savedTexts).then(() => {
+      // Scrub undefined values — Firebase rejects them
+      const clean = JSON.parse(JSON.stringify(savedTexts));
+      ref.set(clean).then(() => {
         console.log('[Cloud] texts saved successfully, count:', savedTexts.length);
       }).catch(e => {
         console.error('[Cloud] texts save FAILED:', e.message);
@@ -19169,9 +19171,9 @@ function saveFromFullEditor() {
       
       text.text = serialized;
       text.alignV = feAlignV;
-      text.graphics = feGraphics.left || feGraphics.right ? { ...feGraphics } : undefined;
-      text.border = hasBorder ? { ...feBorder } : undefined;
-      text.barcode = hasBarcode ? { ...feCurrentBarcode } : undefined;
+      text.graphics = feGraphics.left || feGraphics.right ? { ...feGraphics } : null;
+      text.border = hasBorder ? { ...feBorder } : null;
+      text.barcode = hasBarcode ? { ...feCurrentBarcode } : null;
       saveSavedTexts();
       showToast('Saved changes', 'success');
       renderCurrentTab();
@@ -19191,9 +19193,9 @@ function saveFromFullEditor() {
       text: serialized,
       isTemplate: feIsTemplate,
       alignV: feAlignV,
-      graphics: feGraphics.left || feGraphics.right ? { ...feGraphics } : undefined,
-      border: hasBorder ? { ...feBorder } : undefined,
-      barcode: hasBarcode ? { ...feCurrentBarcode } : undefined,
+      graphics: feGraphics.left || feGraphics.right ? { ...feGraphics } : null,
+      border: hasBorder ? { ...feBorder } : null,
+      barcode: hasBarcode ? { ...feCurrentBarcode } : null,
       tokens: feIsTemplate ? extractTokens(serialized) : []
     };
     
@@ -19252,8 +19254,8 @@ function saveStyleTemplateFromFullEditor() {
       styleTemplate.labelType = labelType;
       styleTemplate.alignV = feAlignV;
       styleTemplate.lineStyles = lineStyles;
-      styleTemplate.graphics = feGraphics.left || feGraphics.right ? { ...feGraphics } : undefined;
-      styleTemplate.border = hasBorder ? { ...feBorder } : undefined;
+      styleTemplate.graphics = feGraphics.left || feGraphics.right ? { ...feGraphics } : null;
+      styleTemplate.border = hasBorder ? { ...feBorder } : null;
       
       saveSavedTexts();
       showToast('Style template saved', 'success');
@@ -19277,10 +19279,10 @@ function saveStyleTemplateFromFullEditor() {
       builtin: false,
       alignV: feAlignV,
       lineStyles: lineStyles,
-      graphics: feGraphics.left || feGraphics.right ? { ...feGraphics } : undefined,
-      border: hasBorder ? { ...feBorder } : undefined
+      graphics: feGraphics.left || feGraphics.right ? { ...feGraphics } : null,
+      border: hasBorder ? { ...feBorder } : null
     };
-    
+
     savedTexts.push(newStyleTemplate);
     saveSavedTexts();
     showToast('Created style "' + name + '"', 'success');
