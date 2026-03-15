@@ -9778,7 +9778,12 @@ async function loadFromCloud() {
     }
   }
   if (cloudData.activeSheet !== undefined) { activeSheetId = cloudData.activeSheet; localStorage.setItem(ACTIVE_KEY, activeSheetId || ''); }
-  if (cloudData.texts) { savedTexts = cloudData.texts; localStorage.setItem(TEXTS_KEY, JSON.stringify(savedTexts)); }
+  if (cloudData.texts) {
+    const cloudTexts = Array.isArray(cloudData.texts) ? cloudData.texts : Object.values(cloudData.texts);
+    console.log('[Cloud] loaded texts from Firebase, count:', cloudTexts.length, 'isArray:', Array.isArray(cloudData.texts));
+    savedTexts = cloudTexts;
+    localStorage.setItem(TEXTS_KEY, JSON.stringify(savedTexts));
+  }
   if (cloudData.settings) {
     // Merge cloud settings but preserve device-local fields
     const localOnly = {};
@@ -13770,8 +13775,20 @@ function loadSavedTexts() {
 function saveSavedTexts() {
   try {
     localStorage.setItem(TEXTS_KEY, JSON.stringify(savedTexts));
-    cloudStore.save('texts', savedTexts);
-  } catch(e) {}
+    const ref = cloudStore._ref('texts');
+    if (ref) {
+      ref.set(savedTexts).then(() => {
+        console.log('[Cloud] texts saved successfully, count:', savedTexts.length);
+      }).catch(e => {
+        console.error('[Cloud] texts save FAILED:', e.message);
+        showToast('Cloud save failed: ' + e.message, 'error');
+      });
+    } else {
+      console.warn('[Cloud] texts save skipped — not signed in');
+    }
+  } catch(e) {
+    console.error('[Cloud] texts save exception:', e.message);
+  }
 }
 
 // ========== INVENTORY ==========
