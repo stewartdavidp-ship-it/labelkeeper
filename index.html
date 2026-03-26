@@ -9607,9 +9607,11 @@ const LABEL_TYPES = {
   // Name Badges & Tent Cards (Session 21)
   '5395': { name: '5395', desc: 'Name Badge', labelW: 3.375, labelH: 2.333, cols: 2, rows: 4, topMargin: 0.55, leftMargin: 0.6875, hGutter: 0.375, vGutter: 0.19, sizeDisplay: '2⅓″ × 3⅜″', layoutDisplay: '2 × 4', category: 'badge' },
   '5302': { name: '5302', desc: 'Tent Card (Small)', labelW: 3.5, labelH: 4, cols: 2, rows: 2, topMargin: 0.75, leftMargin: 0.75, hGutter: 0, vGutter: 0, sizeDisplay: '3½″ × 2″ (folded)', layoutDisplay: '2 × 2', category: 'tent', foldLine: 2 },
-  '5371': { name: '5371 / 8371', desc: 'Business Card', labelW: 3.5, labelH: 2, cols: 2, rows: 5, topMargin: 0.5, leftMargin: 0.75, hGutter: 0, vGutter: 0, sizeDisplay: '3½″ × 2″', layoutDisplay: '2 × 5', category: 'card' }
+  '5371': { name: '5371 / 8371', desc: 'Business Card', labelW: 3.5, labelH: 2, cols: 2, rows: 5, topMargin: 0.5, leftMargin: 0.75, hGutter: 0, vGutter: 0, sizeDisplay: '3½″ × 2″', layoutDisplay: '2 × 5', category: 'card' },
+  // Shipping Labels
+  '4x6-fullbleed': { name: '4×6 Shipping', desc: 'Full-Bleed Shipping Label', labelW: 4, labelH: 6, cols: 1, rows: 1, topMargin: 0, leftMargin: 0, hGutter: 0, vGutter: 0, sizeDisplay: '4″ × 6″', layoutDisplay: '1 × 1', category: 'shipping' }
 };
-const TYPE_ORDER = ['5160', '5163', '5164', '5161', '5162', '5167', '5195', '5168', '5165', '8293', '5395', '5302', '5371'];
+const TYPE_ORDER = ['5160', '5163', '5164', '5161', '5162', '5167', '5195', '5168', '5165', '8293', '5395', '5302', '5371', '4x6-fullbleed'];
 
 // ========== LOCALSTORAGE KEYS ==========
 // v1.x compatible keys (preserved for data migration)
@@ -30926,6 +30928,40 @@ function closePrintCardSignInPrompt() {
   if (overlay) overlay.remove();
 }
 
+/**
+ * Shipping label — renders a full-bleed 4×6 image and auto-triggers print.
+ * The label image URL comes from the shipping provider (Shippo returns a PDF/PNG URL).
+ */
+function processShippingLabelSession(payload) {
+  const labelUrl = payload.labelImageUrl;
+  const orderId = payload.orderId || '';
+  const carrier = payload.carrier || '';
+
+  // Build a minimal print document — just the image at 4×6 full-bleed
+  const printHtml = '<!DOCTYPE html><html><head>' +
+    '<title>Shipping Label' + (orderId ? ' — ' + orderId : '') + '</title>' +
+    '<style>' +
+    '@page { size: 4in 6in; margin: 0; }' +
+    'html, body { margin: 0; padding: 0; width: 4in; height: 6in; overflow: hidden; }' +
+    'img { width: 4in; height: 6in; object-fit: contain; display: block; }' +
+    '@media print { html, body { width: 4in; height: 6in; } }' +
+    '</style></head><body>' +
+    '<img src="' + labelUrl + '" alt="Shipping Label" onload="setTimeout(function(){window.print();},500);">' +
+    '</body></html>';
+
+  // Open in a print iframe or new window
+  const printWin = window.open('', '_blank', 'width=420,height=650');
+  if (printWin) {
+    printWin.document.write(printHtml);
+    printWin.document.close();
+    showToast('Shipping label opened — ' + (carrier ? carrier + ' ' : '') + (orderId || ''), 'success');
+  } else {
+    // Popup blocked — fall back to opening the URL directly
+    window.open(labelUrl, '_blank');
+    showToast('Label opened in new tab. Use browser print for 4×6.', 'info');
+  }
+}
+
 async function processPrintCardSession(sessionId) {
   try {
     const resp = await fetch(LK_API_URL + '/sessions/' + sessionId);
@@ -30934,6 +30970,12 @@ async function processPrintCardSession(sessionId) {
       return;
     }
     const payload = await resp.json();
+
+    // Shipping label — full-bleed 4x6 image print
+    if (payload.type === 'shipping-label' && payload.labelImageUrl) {
+      processShippingLabelSession(payload);
+      return;
+    }
 
     // Same rendering logic as legacy printCard
     settings.lastLabelType = '5371';
